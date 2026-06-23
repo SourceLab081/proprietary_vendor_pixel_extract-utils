@@ -2,7 +2,6 @@
 """Python replacement for extract-all.sh that uses per-repo Python utils."""
 import argparse
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -13,14 +12,11 @@ def fatal(msg: str, code=1):
     sys.exit(code)
 
 
-def update_proprietary_headers(repo_path: Path, phone_base: str, tablet_base: str):
+def update_proprietary_headers(repo_path: Path, phone_base: str):
     for file in repo_path.glob('proprietary-files*.txt'):
         try:
             text = file.read_text().splitlines()
-            if 'tablet' in file.name:
-                header = f"# Extracted from {tablet_base}"
-            else:
-                header = f"# Extracted from {phone_base}"
+            header = f"# Extracted from {phone_base}"
             if text:
                 text[0] = header
             else:
@@ -30,7 +26,7 @@ def update_proprietary_headers(repo_path: Path, phone_base: str, tablet_base: st
             print(f"Warning: failed to update header for {file}: {e}")
 
 
-def run_repo_extract(repo: str, phone_zip: Path, tablet_zip: Path, phone_base: str, tablet_base: str, android_root: Path):
+def run_repo_extract(repo: str, phone_zip: Path, phone_base: str):
     repo_path = Path(repo)
     if not repo_path.is_dir():
         print(f"Repo directory {repo} does not exist, skipping.")
@@ -46,18 +42,9 @@ def run_repo_extract(repo: str, phone_zip: Path, tablet_zip: Path, phone_base: s
     os.chdir(repo_path)
     try:
         subprocess.run([str(extract_py), str(phone_zip), '--keep-dump'], check=False)
-        if repo == 'launcher':
-            subprocess.run([str(extract_py), str(tablet_zip), '--keep-dump', '-s', 'Launcher-Tablet', '-k'], check=False)
-
-        update_proprietary_headers(repo_path, phone_base, tablet_base)
-
+        update_proprietary_headers(repo_path, phone_base)
         subprocess.run(['git', 'add', '.'], check=False)
-        if repo == 'launcher':
-            msg = f"{repo}: Update from {phone_base} and {tablet_base}"
-        else:
-            msg = f"{repo}: Update from {phone_base}"
-        subprocess.run(['git', 'commit', '-m', msg], check=False)
-
+        subprocess.run(['git', 'commit', '-m', f"{repo}: Update from {phone_base}"], check=False)
     finally:
         os.chdir(cwd)
 
@@ -65,26 +52,18 @@ def run_repo_extract(repo: str, phone_zip: Path, tablet_zip: Path, phone_base: s
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--phone', required=True)
-    parser.add_argument('--tablet', required=True)
     args = parser.parse_args()
-    android_root = Path(__file__).resolve().parents[2]
-    phone_zip = Path(args.phone)
-    tablet_zip = Path(args.tablet)
 
+    phone_zip = Path(args.phone)
     if not phone_zip.exists():
         fatal(f"Phone zip file not found: {phone_zip}")
-    if not tablet_zip.exists():
-        fatal(f"Tablet zip file not found: {tablet_zip}")
 
     phone_base = phone_zip.name.rsplit('-', 1)[0]
-    tablet_base = tablet_zip.name.rsplit('-', 1)[0]
 
-    repos = [
-        'clocks', 'gms', 'gsans', 'launcher', 'sounds', 'themepicker'
-    ]
+    repos = ['clocks', 'gms', 'sounds']
 
     for repo in repos:
-        run_repo_extract(repo, phone_zip, tablet_zip, phone_base, tablet_base, android_root)
+        run_repo_extract(repo, phone_zip, phone_base)
 
 
 if __name__ == '__main__':
